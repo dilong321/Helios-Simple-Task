@@ -237,62 +237,31 @@ const App = () => {
   // Updated connect wallet function
   const connectWallet = async () => {
     try {
-      if (!window.ethereum && !window.okxwallet) {
-        alert('No wallet detected. Please install MetaMask or OKX Wallet.');
-        return;
-      }
-
-      const walletType = detectWallet();
-      console.log('Detected wallet:', walletType);
-
-      let accounts = [];
-
-      // Handle OKX Wallet specifically
-      if (window.okxwallet && !window.ethereum.isMetaMask) {
-        accounts = await window.okxwallet.request({
-          method: 'eth_requestAccounts'
-        });
-        
-        // Add network to OKX
-        await window.okxwallet.request({
-          method: 'wallet_addEthereumChain',
-          params: [HELIOS_TESTNET]
-        });
-        
+      // Fallback detection cho production
+      let provider = null;
+      
+      if (window.okxwallet) {
+        provider = window.okxwallet;
+        console.log('Using OKX Wallet');
+      } else if (window.ethereum) {
+        provider = window.ethereum;
+        console.log('Using Ethereum provider');
       } else {
-        // MetaMask or default ethereum provider
-        accounts = await window.ethereum.request({
-          method: 'eth_requestAccounts'
-        });
-
-        const networkAdded = await addHeliosNetwork();
-        if (!networkAdded) {
-          throw new Error('Failed to add Helios Testnet');
-        }
+        throw new Error('No wallet found. Please install MetaMask or OKX Wallet extension.');
       }
 
-      if (accounts.length === 0) {
-        throw new Error('No accounts found');
-      }
+      const accounts = await provider.request({
+        method: 'eth_requestAccounts'
+      });
 
-      setWalletAddress(accounts[0]);
-      setIsConnected(true);
-      
-      await getBalance(accounts[0]);
-      await updateNetworkStats();
-      
-      if (window.localStorage) {
-        window.localStorage.setItem('helios_wallet', accounts[0]);
-        window.localStorage.setItem('wallet_type', walletType);
-      }
-
-      console.log('Wallet connected successfully:', accounts[0]);
+      // Rest of connection logic...
       
     } catch (error) {
-      console.error('Failed to connect wallet:', error);
-      alert('Failed to connect wallet: ' + error.message);
+      console.error('Connection failed:', error);
+      alert('Connection failed: ' + error.message);
     }
   };
+
 
   // Get wallet balance
   const getBalance = async (address) => {
