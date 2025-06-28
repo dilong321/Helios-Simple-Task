@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Wallet, Code, Coins, Image, Clock, Globe, Copy, ExternalLink, Plus, Settings, Trash2, Eye } from 'lucide-react';
 import './App.css';
+import { createPortal } from 'react-dom';
 
 // Helios Testnet Configuration
 const HELIOS_TESTNET = {
@@ -106,6 +107,7 @@ const encodeConstructorParams = (types, values) => {
 };
 
 const App = () => {
+  const [showWalletModal, setShowWalletModal] = useState(false);
   const [activeTab, setActiveTab] = useState('contract');
   const [isConnected, setIsConnected] = useState(false);
   const [walletAddress, setWalletAddress] = useState('');
@@ -219,24 +221,58 @@ const App = () => {
   };
 
   // Connect wallet function
+  const detectWallet = () => {
+    if (window.ethereum) {
+      if (window.ethereum.isMetaMask) {
+        return 'MetaMask';
+      } else if (window.ethereum.isOkxWallet || window.okxwallet) {
+        return 'OKX Wallet';
+      } else {
+        return 'Unknown Wallet';
+      }
+    }
+    return null;
+  };
+
+  // Updated connect wallet function
   const connectWallet = async () => {
     try {
-      if (!window.ethereum) {
-        alert('MetaMask is not installed. Please install MetaMask to continue.');
+      if (!window.ethereum && !window.okxwallet) {
+        alert('No wallet detected. Please install MetaMask or OKX Wallet.');
         return;
       }
 
-      const accounts = await window.ethereum.request({
-        method: 'eth_requestAccounts'
-      });
+      const walletType = detectWallet();
+      console.log('Detected wallet:', walletType);
+
+      let accounts = [];
+
+      // Handle OKX Wallet specifically
+      if (window.okxwallet && !window.ethereum.isMetaMask) {
+        accounts = await window.okxwallet.request({
+          method: 'eth_requestAccounts'
+        });
+        
+        // Add network to OKX
+        await window.okxwallet.request({
+          method: 'wallet_addEthereumChain',
+          params: [HELIOS_TESTNET]
+        });
+        
+      } else {
+        // MetaMask or default ethereum provider
+        accounts = await window.ethereum.request({
+          method: 'eth_requestAccounts'
+        });
+
+        const networkAdded = await addHeliosNetwork();
+        if (!networkAdded) {
+          throw new Error('Failed to add Helios Testnet');
+        }
+      }
 
       if (accounts.length === 0) {
         throw new Error('No accounts found');
-      }
-
-      const networkAdded = await addHeliosNetwork();
-      if (!networkAdded) {
-        throw new Error('Failed to add Helios Testnet');
       }
 
       setWalletAddress(accounts[0]);
@@ -247,6 +283,7 @@ const App = () => {
       
       if (window.localStorage) {
         window.localStorage.setItem('helios_wallet', accounts[0]);
+        window.localStorage.setItem('wallet_type', walletType);
       }
 
       console.log('Wallet connected successfully:', accounts[0]);
@@ -522,10 +559,192 @@ const App = () => {
             </div>
 
             {!isConnected ? (
-              <button onClick={connectWallet} className="connect-btn">
-                <Wallet className="btn-icon" />
-                <span>Connect Wallet</span>
-              </button>
+              <>
+                <button onClick={() => setShowWalletModal(true)} className="connect-btn">
+                  <Wallet className="btn-icon" />
+                  <span>Connect Wallet</span>
+                </button>
+                
+                {/* Wallet Selection Modal - FIX Z-INDEX */}
+                {showWalletModal && createPortal(
+                  <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    background: 'rgba(0, 0, 0, 0.7)',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    zIndex: 999999,
+                    backdropFilter: 'blur(10px)',
+                    animation: 'fadeIn 0.3s ease-out'
+                  }}>
+                    <div style={{
+                      background: 'linear-gradient(145deg, #ffffff, #f8fafc)',
+                      borderRadius: '20px',
+                      padding: '2rem',
+                      width: '320px',
+                      boxShadow: `
+                        0 25px 50px rgba(0, 0, 0, 0.25),
+                        0 0 0 1px rgba(255, 255, 255, 0.05),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.9)
+                      `,
+                      transform: 'scale(1)',
+                      animation: 'modalSlideUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                      position: 'relative'
+                    }}>
+                      {/* Header với close button */}
+                      <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: '1.5rem',
+                        paddingBottom: '1rem',
+                        borderBottom: '1px solid rgba(0, 0, 0, 0.1)'
+                      }}>
+                        <h3 style={{ 
+                          color: '#1e293b', 
+                          fontSize: '1.25rem',
+                          fontWeight: '700',
+                          margin: 0,
+                          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                          WebkitBackgroundClip: 'text',
+                          WebkitTextFillColor: 'transparent'
+                        }}>
+                          Choose Your Wallet
+                        </h3>
+                        
+                        <button 
+                          onClick={() => setShowWalletModal(false)}
+                          style={{
+                            background: 'rgba(0, 0, 0, 0.05)',
+                            border: 'none',
+                            borderRadius: '50%',
+                            width: '32px',
+                            height: '32px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                            fontSize: '1.2rem',
+                            color: '#64748b',
+                            transition: 'all 0.2s ease'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.target.style.background = 'rgba(0, 0, 0, 0.1)';
+                            e.target.style.transform = 'scale(1.1)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.target.style.background = 'rgba(0, 0, 0, 0.05)';
+                            e.target.style.transform = 'scale(1)';
+                          }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      
+                      {/* Wallet options */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        <button 
+                          onClick={() => {
+                            setShowWalletModal(false);
+                            connectWallet();
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '1rem 1.25rem',
+                            background: 'linear-gradient(135deg, #ff6b35, #ff9a56)',
+                            border: 'none',
+                            borderRadius: '12px',
+                            color: 'white',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.75rem',
+                            cursor: 'pointer',
+                            fontSize: '1rem',
+                            fontWeight: '600',
+                            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                            boxShadow: '0 4px 15px rgba(255, 107, 53, 0.3)',
+                            position: 'relative',
+                            overflow: 'hidden'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.target.style.transform = 'translateY(-2px) scale(1.02)';
+                            e.target.style.boxShadow = '0 8px 25px rgba(255, 107, 53, 0.4)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.target.style.transform = 'translateY(0) scale(1)';
+                            e.target.style.boxShadow = '0 4px 15px rgba(255, 107, 53, 0.3)';
+                          }}
+                        >
+                          <span style={{ fontSize: '1.5rem' }}>🦊</span>
+                          <span>MetaMask</span>
+                          <div style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: '-100%',
+                            width: '100%',
+                            height: '100%',
+                            background: 'linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent)',
+                            transition: 'left 0.5s ease'
+                          }}></div>
+                        </button>
+                        
+                        <button 
+                          onClick={() => {
+                            setShowWalletModal(false);
+                            connectWallet();
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '1rem 1.25rem',
+                            background: 'linear-gradient(135deg, #4facfe, #00f2fe)',
+                            border: 'none',
+                            borderRadius: '12px',
+                            color: 'white',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.75rem',
+                            cursor: 'pointer',
+                            fontSize: '1rem',
+                            fontWeight: '600',
+                            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                            boxShadow: '0 4px 15px rgba(79, 172, 254, 0.3)',
+                            position: 'relative',
+                            overflow: 'hidden'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.target.style.transform = 'translateY(-2px) scale(1.02)';
+                            e.target.style.boxShadow = '0 8px 25px rgba(79, 172, 254, 0.4)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.target.style.transform = 'translateY(0) scale(1)';
+                            e.target.style.boxShadow = '0 4px 15px rgba(79, 172, 254, 0.3)';
+                          }}
+                        >
+                          <span style={{ fontSize: '1.5rem' }}>🏦</span>
+                          <span>OKX Wallet</span>
+                        </button>
+                      </div>
+                      
+                      {/* Footer text */}
+                      <p style={{
+                        textAlign: 'center',
+                        fontSize: '0.75rem',
+                        color: '#64748b',
+                        margin: '1.5rem 0 0 0',
+                        fontWeight: '500'
+                      }}>
+                        Connect with one of available wallet providers or create a new wallet.
+                      </p>
+                    </div>
+                  </div>,
+                  document.getElementById('modal-root') // RENDER VÀO MODAL ROOT
+                )}
+
+              </>
             ) : (
               <div className="wallet-info">
                 <div className="wallet-address">
