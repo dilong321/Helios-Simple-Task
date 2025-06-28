@@ -237,30 +237,79 @@ const App = () => {
   // Updated connect wallet function
   const connectWallet = async () => {
     try {
-      // Fallback detection cho production
       let provider = null;
-      
+      let accounts = [];
+      let walletType = '';
+
+      // Detect OKX Wallet specifically
       if (window.okxwallet) {
         provider = window.okxwallet;
-        console.log('Using OKX Wallet');
+        walletType = 'OKX Wallet';
+        console.log('Using OKX Wallet provider');
+      } else if (window.ethereum && window.ethereum.isMetaMask) {
+        provider = window.ethereum;
+        walletType = 'MetaMask';
+        console.log('Using MetaMask provider');
       } else if (window.ethereum) {
         provider = window.ethereum;
-        console.log('Using Ethereum provider');
+        walletType = 'Unknown Wallet';
+        console.log('Using generic Ethereum provider');
       } else {
-        throw new Error('No wallet found. Please install MetaMask or OKX Wallet extension.');
+        throw new Error('No wallet found. Please install MetaMask or OKX Wallet.');
       }
 
-      const accounts = await provider.request({
+      // Request accounts from the correct provider
+      accounts = await provider.request({
         method: 'eth_requestAccounts'
       });
 
-      // Rest of connection logic...
+      console.log('Accounts received:', accounts);
+
+      if (accounts.length === 0) {
+        throw new Error('No accounts found');
+      }
+
+      // Add Helios network using the correct provider
+      try {
+        await provider.request({
+          method: 'wallet_addEthereumChain',
+          params: [HELIOS_TESTNET]
+        });
+      } catch (networkError) {
+        console.log('Network add failed:', networkError);
+        // Continue anyway, network might already exist
+      }
+
+      // FORCE UPDATE REACT STATE
+      setWalletAddress(accounts[0]);
+      setIsConnected(true);
+      
+      console.log('State updated - Connected:', accounts[0]);
+      
+      // Update balance and network stats
+      await getBalance(accounts[0]);
+      await updateNetworkStats();
+      
+      // Save to localStorage
+      if (window.localStorage) {
+        window.localStorage.setItem('helios_wallet', accounts[0]);
+        window.localStorage.setItem('wallet_type', walletType);
+      }
+
+      // Close modal
+      setShowWalletModal(false);
+
+      console.log('Wallet connected successfully:', {
+        address: accounts[0],
+        type: walletType
+      });
       
     } catch (error) {
-      console.error('Connection failed:', error);
-      alert('Connection failed: ' + error.message);
+      console.error('Failed to connect wallet:', error);
+      alert('Failed to connect wallet: ' + error.message);
     }
   };
+
 
 
   // Get wallet balance
