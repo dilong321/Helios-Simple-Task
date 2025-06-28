@@ -392,6 +392,46 @@ const App = () => {
 
     setIsDeploying(true);
     try {
+      // ROBUST PROVIDER DETECTION
+      let provider = null;
+      let accounts = [];
+
+      // Try OKX first
+      if (window.okxwallet && typeof window.okxwallet.request === 'function') {
+        provider = window.okxwallet;
+        console.log('Using OKX provider');
+      } 
+      // Fallback to MetaMask
+      else if (window.ethereum && typeof window.ethereum.request === 'function') {
+        provider = window.ethereum;
+        console.log('Using Ethereum provider');
+      } 
+      // Last resort - check for any provider
+      else if (window.ethereum) {
+        provider = window.ethereum;
+        console.log('Using fallback provider');
+      } else {
+        throw new Error('No wallet provider found. Please install MetaMask or OKX Wallet.');
+      }
+
+      // Verify provider has request method
+      if (!provider || typeof provider.request !== 'function') {
+        throw new Error('Invalid wallet provider. Please refresh and try again.');
+      }
+
+      // Get current accounts
+      try {
+        accounts = await provider.request({ method: 'eth_accounts' });
+      } catch (error) {
+        throw new Error('Failed to get wallet accounts: ' + error.message);
+      }
+
+      if (accounts.length === 0) {
+        throw new Error('No accounts connected. Please connect your wallet.');
+      }
+
+      console.log('Using account:', accounts[0]);
+
       const contractData = PRECOMPILED_CONTRACTS[type];
       if (!contractData) {
         throw new Error(`Contract type ${type} not supported`);
@@ -399,25 +439,24 @@ const App = () => {
 
       const deployData = '0x' + contractData.bytecode;
 
-      // SỬ DỤNG CHÍNH XÁC PARAMETERS ĐÃ THÀNH CÔNG
       const txObject = {
-        from: walletAddress,
+        from: accounts[0],
         data: deployData,
-        gas: '0x' + (2500000).toString(16), // 2.5M gas như Simple Contract
-        gasPrice: '0x' + (1010000000).toString(16), // 1.01 Gwei như Simple Contract
+        gas: '0x' + (2500000).toString(16),
+        gasPrice: '0x' + (1010000000).toString(16),
         value: '0x0'
       };
 
-      console.log(`Deploying ${type} with successful parameters:`, txObject);
+      console.log('Sending transaction:', txObject);
 
-      const txHash = await window.ethereum.request({
+      const txHash = await provider.request({
         method: 'eth_sendTransaction',
         params: [txObject]
       });
 
       console.log('Transaction sent:', txHash);
 
-      // Đợi receipt với timeout ngắn
+      // Wait for receipt logic...
       let receipt = null;
       let attempts = 0;
       const maxAttempts = 15;
@@ -425,7 +464,7 @@ const App = () => {
       while (!receipt && attempts < maxAttempts) {
         await new Promise(resolve => setTimeout(resolve, 2000));
         try {
-          receipt = await window.ethereum.request({
+          receipt = await provider.request({
             method: 'eth_getTransactionReceipt',
             params: [txHash]
           });
@@ -440,7 +479,6 @@ const App = () => {
       }
 
       if (!receipt) {
-        // Báo pending nếu không có receipt
         const newContract = {
           id: Date.now(),
           type,
@@ -453,11 +491,10 @@ const App = () => {
         };
         
         setDeployedContracts(prev => [newContract, ...prev]);
-        alert(`${type} transaction submitted!\nTx Hash: ${txHash}\nCheck explorer for status.`);
+        alert(`${type} transaction submitted!\nTx Hash: ${txHash}`);
         return;
       }
 
-      // Xử lý receipt thành công
       const contractAddress = receipt.contractAddress;
       const status = receipt.status === '0x1' ? 'deployed' : 'failed';
       
@@ -485,6 +522,7 @@ const App = () => {
       setIsDeploying(false);
     }
   };
+
 
 
 
