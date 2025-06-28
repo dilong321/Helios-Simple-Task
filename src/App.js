@@ -385,7 +385,7 @@ const App = () => {
 
   // Deploy contract with pre-compiled bytecode and gas estimation
   const deployContract = async (type, formData) => {
-    if (!isConnected || !window.ethereum) {
+    if (!walletAddress) {
       alert('Please connect your wallet first');
       return;
     }
